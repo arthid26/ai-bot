@@ -1,3 +1,6 @@
 flask
 numpy
 gunicorn
+requests
+pandas
+streamlit

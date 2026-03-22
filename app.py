@@ -1,11 +1,9 @@
 from flask import Flask, jsonify, request
-import pandas as pd
 import numpy as np
-import datetime
 
 app = Flask(__name__)
 
-# เก็บข้อมูลพอร์ตชั่วคราว (ในอนาคตควรใช้ฐานข้อมูล)
+# เก็บข้อมูลพอร์ต
 stats = {
     "balance": 0,
     "equity": 0,
@@ -16,35 +14,19 @@ stats = {
 
 @app.route("/get_signal")
 def get_signal():
-    # ระบบ AI หลาย Timeframe (จำลอง)
-    m15_dec = np.random.choice([1, -1, 0])
-    h1_dec = np.random.choice([1, -1])
-    
-    # ถ้าเทรนด์ใหญ่ (H1) กับจุดเข้า (M15) ตรงกัน ความมั่นใจจะสูง
-    decision = h1_dec if m15_dec == h1_dec else 0
-    confidence = np.random.uniform(0.85, 0.98) if decision != 0 else np.random.uniform(0.5, 0.7)
-    
+    decision = np.random.choice([1, -1, 0])
+    confidence = np.random.uniform(0.6, 0.95)
     return jsonify({
         "decision": int(decision),
-        "confidence": round(confidence, 2),
-        "timeframe_sync": "Match" if decision != 0 else "Wait"
+        "confidence": round(confidence, 2)
     })
 
 @app.route("/update_stats", methods=["POST"])
 def update_stats():
     data = request.json
-    stats["balance"] = data.get("balance")
-    stats["equity"] = data.get("equity")
-    
-    # คำนวณกำไรสะสม (จำลองกราฟ)
-    if "profit" in data:
-        stats["trades"].append(data["profit"])
-        
-    # คำนวณ Win Rate
-    if len(stats["trades"]) > 0:
-        wins = len([p for p in stats["trades"] if p > 0])
-        stats["win_rate"] = (wins / len(stats["trades"])) * 100
-        
+    if data:
+        stats["balance"] = data.get("balance", 0)
+        stats["equity"] = data.get("equity", 0)
     return jsonify({"status": "updated"})
 
 @app.route("/dashboard")

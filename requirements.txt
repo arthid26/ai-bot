@@ -1,5 +1,4 @@
-requests
-pandas
-streamlit
 flask
 numpy
+pandas
+gunicorn

@@ -1,6 +1,6 @@
 flask
 numpy
-gunicorn
-requests
 pandas
+requests
 streamlit
+gunicorn

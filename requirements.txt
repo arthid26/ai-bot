@@ -1,7 +1,3 @@
-flask
-numpy
+streamlit
 pandas
 requests
-streamlit
-altair
-gunicorn

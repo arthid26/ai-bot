@@ -3,4 +3,5 @@ numpy
 pandas
 requests
 streamlit
+altair
 gunicorn

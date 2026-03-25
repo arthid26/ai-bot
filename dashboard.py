@@ -4,7 +4,7 @@ import time
 import pandas as pd
 import plotly.express as px
 
-# 1. ตั้งค่าหน้าจอ
+# 1. ตั้งค่าหน้าจอ (UI Configuration)
 st.set_page_config(
     page_title="Sunbike AI Pro V4", 
     page_icon="🚀", 
@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ปรับแต่ง CSS
+# ปรับแต่ง CSS เพื่อความสวยงามแบบ Dark Theme
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
@@ -31,11 +31,13 @@ st.title("🚀 Sunbike AI Pro Command Center")
 st.caption("Real-time MT5 AI Intelligence Monitoring System")
 st.markdown("---")
 
+# เปลี่ยน URL ให้ตรงกับแอปของคุณ (ตรวจสอบชื่อ my-ai-trading อีกครั้ง)
 API_URL = "https://my-ai-trading.onrender.com/dashboard"
-placeholder = st.empty()
 
-# ตัวแปรสำหรับเก็บสถานะ Error ล่าสุด
-error_status = st.empty()
+# จองพื้นที่สำหรับแสดงสถานะ (Error/Warning) ไว้ด้านบนสุดของเนื้อหา
+status_msg = st.empty()
+# จองพื้นที่สำหรับเนื้อหาหลัก
+placeholder = st.empty()
 
 while True:
     try:
@@ -43,8 +45,8 @@ while True:
         if response.status_code == 200:
             res = response.json()
             
-            # เคลียร์ข้อความ Error ถ้าเชื่อมต่อสำเร็จ
-            error_status.empty()
+            # ✅ ล้างแถบ Error/Warning ออกทันทีเมื่อเชื่อมต่อสำเร็จ
+            status_msg.empty()
             
             with placeholder.container():
                 # --- ส่วนที่ 1: การเงินหลัก (Core Metrics) ---
@@ -61,9 +63,8 @@ while True:
                 col1.metric("💰 Account Balance", f"${bal:,.2f}")
                 col2.metric("📈 Current Equity", f"${eq:,.2f}", f"{floating:+,.2f} Floating")
                 
-                p_label = "💵 Today Profit"
-                col3.metric(p_label, f"${today_p:+,.2f}", delta_color="normal" if today_p >= 0 else "inverse")
-                
+                # กำไรวันนี้
+                col3.metric("💵 Today Profit", f"${today_p:+,.2f}", delta_color="normal" if today_p >= 0 else "inverse")
                 col4.metric("🎯 Win Rate", f"{win_rate:.1f}%", f"{total_t} Trades")
 
                 st.write("") 
@@ -81,7 +82,7 @@ while True:
                         st.success(f"Drawdown: {dd:.2f}% (Safe)")
                     
                     st.write("---")
-                    st.code(f"SYSTEM: HYBRID V3.0\nSTATUS: ONLINE\nSYNC: SUCCESS", language="bash")
+                    st.code(f"SYSTEM: HYBRID V4.0\nSTATUS: ONLINE\nSYNC: SUCCESS", language="bash")
                     
                     if st.button("🔄 Manual Refresh"):
                         st.rerun()
@@ -91,7 +92,6 @@ while True:
                     history = res.get('equity_history', [])
                     if history:
                         df_chart = pd.DataFrame(history, columns=["Portfolio Value"])
-                        # ปรับสีให้คงที่เพื่อลดการกะพริบ
                         st.area_chart(df_chart, use_container_width=True, color="#00ff00")
                     else:
                         st.info("⏳ Waiting for more data points from MT5...")
@@ -102,7 +102,6 @@ while True:
                 st.subheader("📋 Active Positions Summary")
                 multi_data = res.get('multi_symbol', {})
 
-                # ตรวจสอบว่าเป็นข้อมูลที่ถูกต้องก่อนนำไปทำตาราง
                 if multi_data and isinstance(multi_data, dict) and len(multi_data) > 0:
                     col_table, col_pie = st.columns([2, 1])
                     
@@ -113,7 +112,6 @@ while True:
                             color = '#00ff00' if val > 0 else '#ff4b4b'
                             return f'color: {color}'
                         
-                        # ใช้ dataframe แทน table เพื่อความสวยงามและ scroll ได้
                         st.dataframe(
                             df_multi.style.applymap(color_profit, subset=['Profit ($)']).format({'Profit ($)': '{:.2f}'}),
                             use_container_width=True,
@@ -121,21 +119,22 @@ while True:
                         )
 
                     with col_pie:
-                        # ป้องกัน Error กรณีผลรวมเป็น 0
                         if df_multi['Profit ($)'].abs().sum() > 0:
                             fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', 
                                         hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
                             fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=200)
                             st.plotly_chart(fig, use_container_width=True)
                         else:
-                            st.write("📊 Waiting for profit...")
+                            st.write("📊 No profit data to display chart.")
                 else:
-                    st.info("🟢 No active positions at the moment. (Everything is clear!)")
+                    st.info("🟢 No active positions at the moment.")
+
         else:
-            error_status.warning("⚠️ Render Server is starting up... Please wait.")
+            # ใช้ status_msg ในการแสดงคำเตือน เพื่อให้หายไปเมื่อเชื่อมต่อได้
+            status_msg.warning("⚠️ Render Server is starting up... Please wait.")
                 
     except Exception as e:
-        # แสดง Error เพียงครั้งเดียว ไม่สะสมซ้อนกัน
-        error_status.error(f"🔄 Lost connection to Server. Retrying in 10s...")
+        # ✅ เมื่อเกิด Error จะแสดงที่ status_msg เพียงแถบเดียว ไม่สะสมซ้อนกัน
+        status_msg.error(f"🔄 Lost connection to Server. Retrying in 10s...")
         
     time.sleep(10)

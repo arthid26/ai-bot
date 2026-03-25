@@ -1,54 +1,58 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import numpy as np
 
 app = Flask(__name__)
-CORS(app) # อนุญาตให้ Dashboard ดึงข้อมูลได้ไม่ติด Block
+CORS(app) # อนุญาตให้ Dashboard ดึงข้อมูลข้าม Domain ได้
 
-# ตัวแปรเก็บข้อมูลสำหรับส่งให้ Dashboard
-dashboard_data = {
+# ระบบจัดเก็บข้อมูลที่รองรับ Dashboard V4.1
+stats = {
     "balance": 0.0,
     "equity": 0.0,
-    "today_profit": 0.0,
-    "win_rate": 0.0,
-    "drawdown": 0.0,
-    "total_trades": 0,
+    "today_profit": 0.0,  # เพิ่มใหม่
+    "win_rate": 0.0,      # เพิ่มใหม่
+    "drawdown": 0.0,      # เพิ่มใหม่
+    "total_trades": 0,    # เพิ่มใหม่
     "equity_history": [],
-    "multi_symbol": {} # ช่องรับข้อมูลรายคู่เงิน
+    "multi_symbol": {},   # เพิ่มใหม่ (สำหรับตารางรายคู่เงิน)
+    "market_heat": 0
 }
 
-@app.route('/update_stats', methods=['POST'])
+@app.route("/update_stats", methods=["POST"])
 def update_stats():
-    global dashboard_data
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"error": "No data"}), 400
-
-        # รับค่าและบันทึกลงตัวแปร
-        dashboard_data["balance"] = data.get("balance", dashboard_data["balance"])
-        dashboard_data["equity"] = data.get("equity", dashboard_data["equity"])
-        dashboard_data["today_profit"] = data.get("today_profit", dashboard_data["today_profit"])
-        dashboard_data["win_rate"] = data.get("win_rate", dashboard_data["win_rate"])
-        dashboard_data["drawdown"] = data.get("drawdown", dashboard_data["drawdown"])
-        dashboard_data["total_trades"] = data.get("total_trades", dashboard_data["total_trades"])
+    data = request.json
+    if not data: 
+        return jsonify({"error": "No data"}), 400
+    
+    # 1. อัปเดตข้อมูลพื้นฐานและข้อมูลเชิงลึกจาก MT5
+    stats["balance"] = data.get("balance", stats["balance"])
+    stats["equity"] = data.get("equity", stats["equity"])
+    stats["today_profit"] = data.get("today_profit", stats["today_profit"])
+    stats["win_rate"] = data.get("win_rate", stats["win_rate"])
+    stats["drawdown"] = data.get("drawdown", stats["drawdown"])
+    stats["total_trades"] = data.get("total_trades", stats["total_trades"])
+    
+    # 2. อัปเดตข้อมูลรายคู่เงิน (ตัวที่ทำให้ Dashboard ค้างถ้าไม่มี)
+    stats["multi_symbol"] = data.get("multi_symbol", {})
+    
+    # 3. บันทึกประวัติ Equity ทำกราฟ
+    stats["equity_history"].append(stats["equity"])
+    if len(stats["equity_history"]) > 50:
+        stats["equity_history"].pop(0)
         
-        # รับก้อน Multi-Symbol (ตัวนี้สำคัญมาก)
-        dashboard_data["multi_symbol"] = data.get("multi_symbol", {})
+    # 4. สุ่มค่าความร้อนแรงตลาด (เพื่อความสวยงามบน Dashboard)
+    stats["market_heat"] = np.random.randint(30, 95)
+    
+    print(f"✅ Received Data: Bal: {stats['balance']} | Symbols: {list(stats['multi_symbol'].keys())}")
+    return jsonify({"status": "updated"})
 
-        # เก็บประวัติทำกราฟ (ถ้าค่าเปลี่ยน)
-        dashboard_data["equity_history"].append(dashboard_data["equity"])
-        if len(dashboard_data["equity_history"]) > 50:
-            dashboard_data["equity_history"].pop(0)
+@app.route("/dashboard")
+def dashboard():
+    # ส่งข้อมูลทั้งหมดให้ Streamlit
+    return jsonify(stats)
 
-        print("✅ Received data from MT5")
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        print(f"❌ Error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/dashboard', methods=['GET'])
-def get_dashboard():
-    return jsonify(dashboard_data), 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000) # Render มักใช้พอร์ตนี้
+if __name__ == "__main__":
+    import os
+    # กำหนดพอร์ตให้รองรับ Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)

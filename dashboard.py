@@ -41,7 +41,7 @@ placeholder = st.empty()
 
 while True:
     try:
-        response = requests.get(API_URL, timeout=5)
+        response = requests.get(API_URL, timeout=10)
         if response.status_code == 200:
             res = response.json()
             

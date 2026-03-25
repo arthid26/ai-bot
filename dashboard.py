@@ -2,24 +2,35 @@ import streamlit as st
 import requests
 import time
 import pandas as pd
-import plotly.express as px
+import plotly.express as px # เพิ่ม library สำหรับกราฟวงกลม
 
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Sunbike AI Pro V4.2", page_icon="🚀", layout="wide")
+# 1. ตั้งค่าหน้าจอ (UI Configuration)
+st.set_page_config(
+    page_title="Sunbike AI Pro V4", 
+    page_icon="🚀", 
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
 
-# ปรับสไตล์ให้ดู Terminal มากขึ้น
+# ปรับแต่ง CSS เพื่อความสวยงามแบบ Dark Theme
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
-    .stMetric { background-color: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; }
+    .stMetric { 
+        background-color: #161b22; 
+        padding: 20px; 
+        border-radius: 12px; 
+        border: 1px solid #30363d;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    div[data-testid="stMetricValue"] { font-size: 28px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🚀 Sunbike AI Pro Command Center")
-st.caption("Intelligence Multi-Symbol Monitoring System")
+st.caption("Real-time MT5 AI Intelligence Monitoring System")
 st.markdown("---")
 
-# *** ตรวจสอบ URL ให้ตรงกับแอปจริงของคุณ ***
 API_URL = "https://my-ai-trading.onrender.com/dashboard"
 placeholder = st.empty()
 
@@ -30,78 +41,91 @@ while True:
             res = response.json()
             
             with placeholder.container():
-                # --- ส่วนที่ 1: CORE METRICS ---
-                m1, m2, m3, m4 = st.columns(4)
+                # --- ส่วนที่ 1: การเงินหลัก (Core Metrics) ---
+                col1, col2, col3, col4 = st.columns(4)
                 
                 bal = res.get('balance', 0.0)
                 eq = res.get('equity', 0.0)
                 today_p = res.get('today_profit', 0.0)
                 win_rate = res.get('win_rate', 0.0)
+                dd = res.get('drawdown', 0.0)
+                total_t = res.get('total_trades', 0)
                 floating = eq - bal
                 
-                m1.metric("💰 Balance", f"${bal:,.2f}")
-                m2.metric("📈 Equity", f"${eq:,.2f}", f"{floating:+,.2f} Floating")
-                m3.metric("💵 Today Profit", f"${today_p:+,.2f}", delta_color="normal" if today_p >= 0 else "inverse")
-                m4.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+                col1.metric("💰 Account Balance", f"${bal:,.2f}")
+                col2.metric("📈 Current Equity", f"${eq:,.2f}", f"{floating:+,.2f} Floating")
+                
+                p_label = "💵 Today Profit"
+                col3.metric(p_label, f"${today_p:+,.2f}", delta_color="normal" if today_p >= 0 else "inverse")
+                
+                col4.metric("🎯 Win Rate", f"{win_rate:.1f}%", f"{total_t} Trades")
 
-                st.write("")
+                st.write("") 
 
-                # --- ส่วนที่ 2: RISK & EQUITY CURVE ---
+                # --- ส่วนที่ 2: วิเคราะห์ความเสี่ยงและกราฟเส้น ---
                 c_left, c_right = st.columns([1, 3])
 
                 with c_left:
                     st.subheader("🛡️ Risk Guard")
-                    dd = res.get('drawdown', 0.0)
                     if dd > 10:
-                        st.error(f"Drawdown: {dd:.2f}% (High!)")
+                        st.error(f"Drawdown: {dd:.2f}% (High Risk!)")
                     elif dd > 5:
                         st.warning(f"Drawdown: {dd:.2f}% (Caution)")
                     else:
                         st.success(f"Drawdown: {dd:.2f}% (Safe)")
                     
                     st.write("---")
-                    st.code(f"SYSTEM: ONLINE\nTRADES: {res.get('total_trades', 0)}")
-                    if st.button("🔄 Refresh"): st.rerun()
+                    st.code(f"SYSTEM: HYBRID V3.0\nSTATUS: ONLINE\nSYNC: SUCCESS", language="bash")
+                    
+                    if st.button("🔄 Manual Refresh"):
+                        st.rerun()
 
                 with c_right:
-                    st.subheader("📊 Equity Growth")
+                    st.subheader("📊 Equity Growth Curve")
                     history = res.get('equity_history', [])
                     if history:
-                        st.area_chart(pd.DataFrame(history, columns=["Equity"]), color="#00ff00")
+                        df_chart = pd.DataFrame(history, columns=["Portfolio Value"])
+                        st.area_chart(df_chart, use_container_width=True, color="#00ff00")
                     else:
-                        st.info("⏳ Waiting for history data...")
+                        st.info("⏳ Waiting for more data points from MT5...")
 
                 st.markdown("---")
 
-                # --- ส่วนที่ 3: MULTI-SYMBOL ANALYSIS ---
+                # --- ส่วนที่ 3: รายละเอียดรายคู่เงิน (Multi-Symbol View) ---
+                # ส่วนนี้จะแสดงตารางสรุปกำไรแยกตามคู่เงินที่บอทเทรดอยู่
                 st.subheader("📋 Active Positions Summary")
                 multi_data = res.get('multi_symbol', {})
 
-                if isinstance(multi_data, dict) and len(multi_data) > 0:
-                    col_t, col_p = st.columns([2, 1])
+                if multi_data:
+                    col_table, col_pie = st.columns([2, 1])
                     
-                    with col_t:
+                    with col_table:
+                        # สร้างตารางข้อมูล
                         df_multi = pd.DataFrame(list(multi_data.items()), columns=['Symbol', 'Profit ($)'])
-                        # ใส่สีเขียว/แดง ในตาราง
+                        
+                        # ฟังก์ชันตกแต่งสีตัวเลข
+                        def color_profit(val):
+                            color = '#00ff00' if val > 0 else '#ff4b4b'
+                            return f'color: {color}'
+                        
                         st.dataframe(
-                            df_multi.style.applymap(lambda x: f"color: {'#00ff00' if x > 0 else '#ff4b4b'}", subset=['Profit ($)'])
-                            .format({'Profit ($)': '{:.2f}'}),
+                            df_multi.style.applymap(color_profit, subset=['Profit ($)']).format({'Profit ($)': '{:.2f}'}),
                             use_container_width=True
                         )
 
                     with col_pie:
-                        # วาดวงกลมเฉพาะเมื่อมีกำไร/ขาดทุนที่ไม่ใช่ 0
-                        if df_multi['Profit ($)'].abs().sum() > 0:
-                            fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', hole=0.4)
-                            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=200, showlegend=False)
-                            st.plotly_chart(fig, use_container_width=True)
+                        # สร้างกราฟวงกลมแสดงสัดส่วนกำไร/ขาดทุน
+                        fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', 
+                                    hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                        fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=200)
+                        st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("🟢 No active positions currently.")
+                    st.info("🟢 No active positions at the moment. (Everything is clear!)")
 
         else:
-            st.warning("⚠️ Server is starting up... Please wait.")
+            st.warning("⚠️ Render Server is starting up... Please wait.")
                 
     except Exception as e:
-        st.error("🔄 Lost connection to Server. Retrying...")
+        st.error(f"🔄 Lost connection to Server. Retrying in 10s...")
         
     time.sleep(10)

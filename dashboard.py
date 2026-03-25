@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import time
 import pandas as pd
+import plotly.express as px # เพิ่ม library สำหรับกราฟวงกลม
 
 # 1. ตั้งค่าหน้าจอ (UI Configuration)
 st.set_page_config(
@@ -51,25 +52,21 @@ while True:
                 total_t = res.get('total_trades', 0)
                 floating = eq - bal
                 
-                # แสดงผล Metrics
                 col1.metric("💰 Account Balance", f"${bal:,.2f}")
                 col2.metric("📈 Current Equity", f"${eq:,.2f}", f"{floating:+,.2f} Floating")
                 
-                # กำไรวันนี้ (ถ้าบวกเป็นสีเขียว ถ้าลบเป็นสีแดง)
                 p_label = "💵 Today Profit"
                 col3.metric(p_label, f"${today_p:+,.2f}", delta_color="normal" if today_p >= 0 else "inverse")
                 
                 col4.metric("🎯 Win Rate", f"{win_rate:.1f}%", f"{total_t} Trades")
 
-                st.write("") # เว้นวรรค
+                st.write("") 
 
                 # --- ส่วนที่ 2: วิเคราะห์ความเสี่ยงและกราฟเส้น ---
                 c_left, c_right = st.columns([1, 3])
 
                 with c_left:
                     st.subheader("🛡️ Risk Guard")
-                    
-                    # วงจรความปลอดภัย (Drawdown Alert)
                     if dd > 10:
                         st.error(f"Drawdown: {dd:.2f}% (High Risk!)")
                     elif dd > 5:
@@ -78,7 +75,7 @@ while True:
                         st.success(f"Drawdown: {dd:.2f}% (Safe)")
                     
                     st.write("---")
-                    st.code(f"SYSTEM: HYBRID V3.0\nMARKET: EURUSD/EV\nSTATUS: ONLINE\nSYNC: SUCCESS", language="bash")
+                    st.code(f"SYSTEM: HYBRID V3.0\nSTATUS: ONLINE\nSYNC: SUCCESS", language="bash")
                     
                     if st.button("🔄 Manual Refresh"):
                         st.rerun()
@@ -87,16 +84,48 @@ while True:
                     st.subheader("📊 Equity Growth Curve")
                     history = res.get('equity_history', [])
                     if history:
-                        # สร้าง DataFrame และพล็อตกราฟพื้นที่ (Area Chart) ให้ดูสวยงาม
                         df_chart = pd.DataFrame(history, columns=["Portfolio Value"])
                         st.area_chart(df_chart, use_container_width=True, color="#00ff00")
                     else:
-                        st.info("⏳ Waiting for more data points from MT5 to build the chart...")
+                        st.info("⏳ Waiting for more data points from MT5...")
+
+                st.markdown("---")
+
+                # --- ส่วนที่ 3: รายละเอียดรายคู่เงิน (Multi-Symbol View) ---
+                # ส่วนนี้จะแสดงตารางสรุปกำไรแยกตามคู่เงินที่บอทเทรดอยู่
+                st.subheader("📋 Active Positions Summary")
+                multi_data = res.get('multi_symbol', {})
+
+                if multi_data:
+                    col_table, col_pie = st.columns([2, 1])
+                    
+                    with col_table:
+                        # สร้างตารางข้อมูล
+                        df_multi = pd.DataFrame(list(multi_data.items()), columns=['Symbol', 'Profit ($)'])
+                        
+                        # ฟังก์ชันตกแต่งสีตัวเลข
+                        def color_profit(val):
+                            color = '#00ff00' if val > 0 else '#ff4b4b'
+                            return f'color: {color}'
+                        
+                        st.dataframe(
+                            df_multi.style.applymap(color_profit, subset=['Profit ($)']).format({'Profit ($)': '{:.2f}'}),
+                            use_container_width=True
+                        )
+
+                    with col_pie:
+                        # สร้างกราฟวงกลมแสดงสัดส่วนกำไร/ขาดทุน
+                        fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', 
+                                    hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                        fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=200)
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("🟢 No active positions at the moment. (Everything is clear!)")
 
         else:
-            st.warning("⚠️ Render Server is starting up... Please wait about 30-60 seconds.")
+            st.warning("⚠️ Render Server is starting up... Please wait.")
                 
     except Exception as e:
-        st.error("🔄 Lost connection to Server. Retrying in 10s...")
+        st.error(f"🔄 Lost connection to Server. Retrying in 10s...")
         
     time.sleep(10)

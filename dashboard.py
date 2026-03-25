@@ -31,7 +31,7 @@ st.title("🚀 Sunbike AI Pro Command Center")
 st.caption("Real-time MT5 AI Intelligence Monitoring System")
 st.markdown("---")
 
-API_URL = "https://my-ai-trading.onrender.com/dashboard"
+API_URL = "https://sunbike-ai.onrender.com/dashboard"
 placeholder = st.empty()
 
 while True:

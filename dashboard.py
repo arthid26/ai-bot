@@ -2,9 +2,9 @@ import streamlit as st
 import requests
 import time
 import pandas as pd
-import plotly.express as px # เพิ่ม library สำหรับกราฟวงกลม
+import plotly.express as px
 
-# 1. ตั้งค่าหน้าจอ (UI Configuration)
+# 1. ตั้งค่าหน้าจอ
 st.set_page_config(
     page_title="Sunbike AI Pro V4", 
     page_icon="🚀", 
@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ปรับแต่ง CSS เพื่อความสวยงามแบบ Dark Theme
+# ปรับแต่ง CSS
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
@@ -34,11 +34,17 @@ st.markdown("---")
 API_URL = "https://my-ai-trading.onrender.com/dashboard"
 placeholder = st.empty()
 
+# ตัวแปรสำหรับเก็บสถานะ Error ล่าสุด
+error_status = st.empty()
+
 while True:
     try:
         response = requests.get(API_URL, timeout=5)
         if response.status_code == 200:
             res = response.json()
+            
+            # เคลียร์ข้อความ Error ถ้าเชื่อมต่อสำเร็จ
+            error_status.empty()
             
             with placeholder.container():
                 # --- ส่วนที่ 1: การเงินหลัก (Core Metrics) ---
@@ -85,6 +91,7 @@ while True:
                     history = res.get('equity_history', [])
                     if history:
                         df_chart = pd.DataFrame(history, columns=["Portfolio Value"])
+                        # ปรับสีให้คงที่เพื่อลดการกะพริบ
                         st.area_chart(df_chart, use_container_width=True, color="#00ff00")
                     else:
                         st.info("⏳ Waiting for more data points from MT5...")
@@ -92,40 +99,43 @@ while True:
                 st.markdown("---")
 
                 # --- ส่วนที่ 3: รายละเอียดรายคู่เงิน (Multi-Symbol View) ---
-                # ส่วนนี้จะแสดงตารางสรุปกำไรแยกตามคู่เงินที่บอทเทรดอยู่
                 st.subheader("📋 Active Positions Summary")
                 multi_data = res.get('multi_symbol', {})
 
-                if multi_data:
+                # ตรวจสอบว่าเป็นข้อมูลที่ถูกต้องก่อนนำไปทำตาราง
+                if multi_data and isinstance(multi_data, dict) and len(multi_data) > 0:
                     col_table, col_pie = st.columns([2, 1])
                     
                     with col_table:
-                        # สร้างตารางข้อมูล
                         df_multi = pd.DataFrame(list(multi_data.items()), columns=['Symbol', 'Profit ($)'])
                         
-                        # ฟังก์ชันตกแต่งสีตัวเลข
                         def color_profit(val):
                             color = '#00ff00' if val > 0 else '#ff4b4b'
                             return f'color: {color}'
                         
+                        # ใช้ dataframe แทน table เพื่อความสวยงามและ scroll ได้
                         st.dataframe(
                             df_multi.style.applymap(color_profit, subset=['Profit ($)']).format({'Profit ($)': '{:.2f}'}),
-                            use_container_width=True
+                            use_container_width=True,
+                            hide_index=True
                         )
 
                     with col_pie:
-                        # สร้างกราฟวงกลมแสดงสัดส่วนกำไร/ขาดทุน
-                        fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', 
-                                    hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-                        fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=200)
-                        st.plotly_chart(fig, use_container_width=True)
+                        # ป้องกัน Error กรณีผลรวมเป็น 0
+                        if df_multi['Profit ($)'].abs().sum() > 0:
+                            fig = px.pie(df_multi, values=df_multi['Profit ($)'].abs(), names='Symbol', 
+                                        hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
+                            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=200)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.write("📊 Waiting for profit...")
                 else:
                     st.info("🟢 No active positions at the moment. (Everything is clear!)")
-
         else:
-            st.warning("⚠️ Render Server is starting up... Please wait.")
+            error_status.warning("⚠️ Render Server is starting up... Please wait.")
                 
     except Exception as e:
-        st.error(f"🔄 Lost connection to Server. Retrying in 10s...")
+        # แสดง Error เพียงครั้งเดียว ไม่สะสมซ้อนกัน
+        error_status.error(f"🔄 Lost connection to Server. Retrying in 10s...")
         
     time.sleep(10)

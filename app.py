@@ -3,65 +3,91 @@ import requests
 import time
 import pandas as pd
 import plotly.express as px
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import multiprocessing
+import os
+import numpy as np
 
-st.set_page_config(page_title="Sunbike AI Multi-Broker", page_icon="🚀", layout="wide")
+# ==========================================
+# PART 1: FLASK BACKEND (รันเบื้องหลัง)
+# ==========================================
+def run_flask():
+    flask_app = Flask(__name__)
+    CORS(flask_app)
 
-# CSS สำหรับ Dark Theme (เหมือนเดิมที่คุณชอบ)
-st.markdown("""
-    <style>
-    .stMetric { background-color: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; }
-    </style>
-    """, unsafe_allow_html=True)
+    # ใช้ Dictionary เก็บข้อมูลแยกโบรกเกอร์
+    stats_db = {
+        "XM": {"balance": 0.0, "equity": 0.0, "today_profit": 0.0, "equity_history": [], "multi_symbol": {}},
+        "Exness": {"balance": 0.0, "equity": 0.0, "today_profit": 0.0, "equity_history": [], "multi_symbol": {}}
+    }
 
-st.title("🚀 Sunbike AI Multi-Broker Command Center")
-API_URL = "https://my-ai-trading.onrender.com/dashboard"
+    @flask_app.route("/update_stats", methods=["POST"])
+    def update_stats():
+        data = request.json
+        broker = data.get("broker", "Unknown")
+        if broker not in stats_db:
+            stats_db[broker] = {"balance": 0.0, "equity": 0.0, "today_profit": 0.0, "equity_history": [], "multi_symbol": {}}
+        
+        target = stats_db[broker]
+        target["balance"] = data.get("balance", target["balance"])
+        target["equity"] = data.get("equity", target["equity"])
+        target["multi_symbol"] = data.get("multi_symbol", {})
+        
+        target["equity_history"].append(target["equity"])
+        if len(target["equity_history"]) > 50: target["equity_history"].pop(0)
+        return jsonify({"status": "updated"})
 
-placeholder = st.empty()
+    @flask_app.route("/dashboard_data")
+    def dashboard_data():
+        return jsonify(stats_db)
 
-while True:
-    try:
-        response = requests.get(API_URL, timeout=10)
-        if response.status_code == 200:
-            all_res = response.json()
-            
-            with placeholder.container():
-                # สร้าง Tabs แยกตามโบรกเกอร์
-                brokers = list(all_res.keys())
-                tabs = st.tabs([f"📊 {b}" for b in brokers])
+    # รัน Flask ที่พอร์ต 5000 (ภายในเครื่อง)
+    flask_app.run(host="0.0.0.0", port=5000)
 
-                for i, broker in enumerate(brokers):
-                    res = all_res[broker]
-                    with tabs[i]:
-                        # --- Metrics ---
-                        m1, m2, m3, m4 = st.columns(4)
-                        bal, eq = res.get('balance', 0.0), res.get('equity', 0.0)
-                        
-                        m1.metric(f"💰 {broker} Balance", f"${bal:,.2f}")
-                        m2.metric("📈 Equity", f"${eq:,.2f}", f"{eq-bal:+,.2f}")
-                        m3.metric("💵 Today Profit", f"${res.get('today_profit', 0.0):+,.2f}")
-                        m4.metric("🎯 Win Rate", f"{res.get('win_rate', 0.0):.1f}%")
+# ==========================================
+# PART 2: STREAMLIT FRONTEND (หน้าจอแสดงผล)
+# ==========================================
+def main_ui():
+    st.set_page_config(page_title="Sunbike AI Hybrid", layout="wide")
+    st.title("🚀 Sunbike AI Hybrid Command Center")
 
-                        # --- Graph & Table ---
-                        c_left, c_right = st.columns([2, 1])
-                        with c_left:
+    # ดึงข้อมูลจาก Flask ภายในเครื่องเอง
+    API_URL = "http://127.0.0.1:5000/dashboard_data"
+    placeholder = st.empty()
+
+    while True:
+        try:
+            response = requests.get(API_URL, timeout=5)
+            if response.status_code == 200:
+                all_res = response.json()
+                with placeholder.container():
+                    brokers = list(all_res.keys())
+                    tabs = st.tabs([f"📊 {b}" for b in brokers])
+                    for i, b in enumerate(brokers):
+                        res = all_res[b]
+                        with tabs[i]:
+                            c1, c2 = st.columns(2)
+                            c1.metric("Balance", f"${res['balance']:,.2f}")
+                            c2.metric("Equity", f"${res['equity']:,.2f}")
+                            
                             st.subheader("Equity Curve")
-                            history = res.get('equity_history', [])
-                            if history:
-                                st.area_chart(pd.DataFrame(history, columns=["Value"]), color="#00ff00")
-                        
-                        with c_right:
-                            st.subheader("Active Symbols")
-                            multi = res.get('multi_symbol', {})
-                            if multi:
-                                df = pd.DataFrame(list(multi.items()), columns=['Symbol', 'Profit'])
-                                st.table(df)
-                            else:
-                                st.write("No active trades.")
+                            if res['equity_history']:
+                                st.area_chart(res['equity_history'])
+            else:
+                st.warning("Waiting for Data...")
+        except:
+            st.error("Connecting to Backend...")
+        time.sleep(5)
 
-        else:
-            st.warning("Connecting to server...")
-            
-    except Exception as e:
-        st.error(f"Connection lost. Retrying...")
+# ==========================================
+# RUN BOTH
+# ==========================================
+if __name__ == "__main__":
+    # เริ่มรัน Flask เป็น Process แยก
+    flask_process = multiprocessing.Process(target=run_flask)
+    flask_process.daemon = True
+    flask_process.start()
     
-    time.sleep(10)
+    # รัน Streamlit UI
+    main_ui()

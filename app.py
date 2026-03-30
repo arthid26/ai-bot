@@ -1,58 +1,67 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-import numpy as np
+import streamlit as st
+import requests
+import time
+import pandas as pd
+import plotly.express as px
 
-app = Flask(__name__)
-CORS(app) # อนุญาตให้ Dashboard ดึงข้อมูลข้าม Domain ได้
+st.set_page_config(page_title="Sunbike AI Multi-Broker", page_icon="🚀", layout="wide")
 
-# ระบบจัดเก็บข้อมูลที่รองรับ Dashboard V4.1
-stats = {
-    "balance": 0.0,
-    "equity": 0.0,
-    "today_profit": 0.0,  # เพิ่มใหม่
-    "win_rate": 0.0,      # เพิ่มใหม่
-    "drawdown": 0.0,      # เพิ่มใหม่
-    "total_trades": 0,    # เพิ่มใหม่
-    "equity_history": [],
-    "multi_symbol": {},   # เพิ่มใหม่ (สำหรับตารางรายคู่เงิน)
-    "market_heat": 0
-}
+# CSS สำหรับ Dark Theme (เหมือนเดิมที่คุณชอบ)
+st.markdown("""
+    <style>
+    .stMetric { background-color: #161b22; padding: 15px; border-radius: 10px; border: 1px solid #30363d; }
+    </style>
+    """, unsafe_allow_html=True)
 
-@app.route("/update_stats", methods=["POST"])
-def update_stats():
-    data = request.json
-    if not data: 
-        return jsonify({"error": "No data"}), 400
+st.title("🚀 Sunbike AI Multi-Broker Command Center")
+API_URL = "https://my-ai-trading.onrender.com/dashboard"
+
+placeholder = st.empty()
+
+while True:
+    try:
+        response = requests.get(API_URL, timeout=10)
+        if response.status_code == 200:
+            all_res = response.json()
+            
+            with placeholder.container():
+                # สร้าง Tabs แยกตามโบรกเกอร์
+                brokers = list(all_res.keys())
+                tabs = st.tabs([f"📊 {b}" for b in brokers])
+
+                for i, broker in enumerate(brokers):
+                    res = all_res[broker]
+                    with tabs[i]:
+                        # --- Metrics ---
+                        m1, m2, m3, m4 = st.columns(4)
+                        bal, eq = res.get('balance', 0.0), res.get('equity', 0.0)
+                        
+                        m1.metric(f"💰 {broker} Balance", f"${bal:,.2f}")
+                        m2.metric("📈 Equity", f"${eq:,.2f}", f"{eq-bal:+,.2f}")
+                        m3.metric("💵 Today Profit", f"${res.get('today_profit', 0.0):+,.2f}")
+                        m4.metric("🎯 Win Rate", f"{res.get('win_rate', 0.0):.1f}%")
+
+                        # --- Graph & Table ---
+                        c_left, c_right = st.columns([2, 1])
+                        with c_left:
+                            st.subheader("Equity Curve")
+                            history = res.get('equity_history', [])
+                            if history:
+                                st.area_chart(pd.DataFrame(history, columns=["Value"]), color="#00ff00")
+                        
+                        with c_right:
+                            st.subheader("Active Symbols")
+                            multi = res.get('multi_symbol', {})
+                            if multi:
+                                df = pd.DataFrame(list(multi.items()), columns=['Symbol', 'Profit'])
+                                st.table(df)
+                            else:
+                                st.write("No active trades.")
+
+        else:
+            st.warning("Connecting to server...")
+            
+    except Exception as e:
+        st.error(f"Connection lost. Retrying...")
     
-    # 1. อัปเดตข้อมูลพื้นฐานและข้อมูลเชิงลึกจาก MT5
-    stats["balance"] = data.get("balance", stats["balance"])
-    stats["equity"] = data.get("equity", stats["equity"])
-    stats["today_profit"] = data.get("today_profit", stats["today_profit"])
-    stats["win_rate"] = data.get("win_rate", stats["win_rate"])
-    stats["drawdown"] = data.get("drawdown", stats["drawdown"])
-    stats["total_trades"] = data.get("total_trades", stats["total_trades"])
-    
-    # 2. อัปเดตข้อมูลรายคู่เงิน (ตัวที่ทำให้ Dashboard ค้างถ้าไม่มี)
-    stats["multi_symbol"] = data.get("multi_symbol", {})
-    
-    # 3. บันทึกประวัติ Equity ทำกราฟ
-    stats["equity_history"].append(stats["equity"])
-    if len(stats["equity_history"]) > 50:
-        stats["equity_history"].pop(0)
-        
-    # 4. สุ่มค่าความร้อนแรงตลาด (เพื่อความสวยงามบน Dashboard)
-    stats["market_heat"] = np.random.randint(30, 95)
-    
-    print(f"✅ Received Data: Bal: {stats['balance']} | Symbols: {list(stats['multi_symbol'].keys())}")
-    return jsonify({"status": "updated"})
-
-@app.route("/dashboard")
-def dashboard():
-    # ส่งข้อมูลทั้งหมดให้ Streamlit
-    return jsonify(stats)
-
-if __name__ == "__main__":
-    import os
-    # กำหนดพอร์ตให้รองรับ Render
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    time.sleep(10)
